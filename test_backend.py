@@ -13,10 +13,12 @@ class OrbitTests(unittest.TestCase):
         self.client = TestClient(server.app, headers={"X-Orbita-Access": "example-test-access-not-for-production"})
     def test_server_html(self):
         self.assertEqual(self.client.get('/api/health').status_code,200)
-        self.assertEqual(self.client.get('/api/health').json()['version'],'3.0')
+        self.assertEqual(self.client.get('/api/health').json()['version'],'4.1')
         html=self.client.get('/').text
         self.assertIn('id="screen-acid"',html)
         self.assertIn('function acidMetrics()',html)
+        self.assertIn('id="answer-input"', html)
+        self.assertNotIn('Describe qué tan cierta es esta afirmación',html)
     def test_six_questions_consistent(self):
         questions=self.client.get('/api/acid/questions').json()['questions']
         self.assertEqual([x['id'] for x in questions],['a1','a2','a3','a4','a5','a6'])
@@ -31,6 +33,15 @@ class OrbitTests(unittest.TestCase):
         records={key:{'answer':f'Argumento razonado de prueba para {key}', 'evidence':2,'source':'Entrevista'} for key,_ in server.ACID_QUESTIONS}
         r=self.client.post('/api/acid/review',json={'brief':{'product':'Test'},'acid':records})
         self.assertEqual(r.status_code,503)
+    def test_question_schema_rejects_generic_scale(self):
+        q={"id":"q_1","dimension":"Precio","text":"¿Qué sucedió al ofrecer el precio?","type":"choice","options":[{"value":str(i),"label":v,"score":i*25} for i,v in enumerate(["No sé","Débil","Parcial","Sólido","Comprobado"])]}
+        self.assertEqual(server.validate_questions([q]),[])
+
+    def test_typed_question_schema(self):
+        self.assertIn('type',server.QUESTION_SCHEMA['properties'])
+        self.assertIn('options',server.QUESTION_SCHEMA['properties'])
+        self.assertIn('number',server.QUESTION_SCHEMA['properties']['type']['enum'])
+
     def test_pdf_contains_acid(self):
         stats=[{'name':n,'score':60+i%5*5,'evidence':40+i%3*10} for i,n in enumerate(server.DIMENSIONS)]
         acid={key:{'answer':f'Respuesta de prueba con contexto, argumento {key}', 'evidence':3,'source':'Entrevista y comparativos', 'rebuttal':'Contraargumento documentado'} for key,_ in server.ACID_QUESTIONS}
